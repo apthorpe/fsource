@@ -1396,6 +1396,11 @@ def save_stmt(tokens):
     except NoMatch:
         return imbue_save_stmt(tokens)
 
+def include_stmt(tokens):
+    expect(tokens, 'include')
+    ignore_stmt(tokens)
+    return tokens.produce('include_stmt')
+
 @rule
 def param_init(tokens):
     name = identifier(tokens)
@@ -1592,6 +1597,7 @@ _DECLARATION_HANDLERS = {
     'intrinsic':   imbue_stmt(tag('intrinsic', 'intrinsic'), identifier),
     'optional':    imbue_stmt(tag('optional', 'optional'), identifier),
     'save':        save_stmt,
+    'include':     include_stmt,
     }
 
 # Entity declarations begin with a type, but 'type' may also be a derived
@@ -1930,6 +1936,7 @@ STMT_HANDLERS = {
 
     # placement in execution part is discouraged, but occasionally used
     'data':       data_stmt,
+    'include':    include_stmt,
 
     # use fast end handlers
     'end':           fast_end_handler,
