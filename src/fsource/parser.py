@@ -2057,7 +2057,13 @@ program_unit_sequence = block(program_unit, 'program_unit_list')
 def compilation_unit(tokens):
     with LockedIn(tokens, "expecting module or (sub-)program"):
         units = program_unit_sequence(tokens)
-        expect_cat(tokens, lexer.CAT_DOLLAR)
+        try:
+            expect_cat(tokens, lexer.CAT_DOLLAR)
+        except NoMatch:
+            # If no other program units (module, function, subroutine, block data)
+            # have yet been detected in the current file, infer the token 'program'
+            print("compilation_unit: check for implied PROGRAM statement")
+            raise
 
     version = tokens.produce('ast_version', *map(str, __version_tuple__))
     fname = tokens.produce('filename', tokens.fname)
