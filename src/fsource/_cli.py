@@ -13,6 +13,8 @@ import sys
 import json
 import textwrap
 
+import re
+
 from . import __version__, __version_tuple__
 from . import splicer
 from . import lexer
@@ -50,6 +52,7 @@ def get_parser():
           lex           split source into tokens
           splice        split source into sequence of logical lines
           wrap          generate C wrappers for Fortran declarations
+          assess        evaluate legacy-ness of source files
         """)
 
     p = argparse.ArgumentParser(
@@ -59,7 +62,7 @@ def get_parser():
             usage="fsource COMMAND FILE [FILE ...]"
             )
     p.add_argument('command', metavar='COMMAND',
-                   choices=('splice', 'lex', 'parse', 'wrap'),
+                   choices=('splice', 'lex', 'parse', 'wrap', 'assess'),
                    help=argparse.SUPPRESS)
     p.add_argument('files', metavar='FILE', type=str, nargs='+',
                    help="Fortran file(s) to process")
@@ -229,13 +232,122 @@ def cmd_wrap(args):
         sys.exit(1)
 
 
+def cmd_assess(args):
+    """Evaluate 'legacy'-ness of source files"""
+    for fname in args.files:
+        try:
+            fmt_by_ext, is_preproc_by_ext = common.guess_form(fname)
+            ffmt = fmt_by_ext
+            if is_preproc_by_ext:
+                fpre = 'preprocessed'
+            else:
+                fpre = 'final'
+        except ValueError as e:
+            ffmt = 'unknown'
+            fpre = 'unknown'
+
+        print("Via guess_form:   {0:s} is {1:s} format and {2:s}".format(fname, ffmt, fpre))
+
+        line_ct = 0
+        label_ct = 0
+        max_llen = 0
+
+        ccmt_ct = 0
+        pat_ccmt = re.compile(r"^C(?ai)")
+
+        excmt_ct = 0
+        pat_excmt = re.compile(r"^\s*!(?a)")
+
+        tab_ct = 0
+        pat_tab = re.compile(r"\t(?a)")
+
+        lcont_ct = 0
+        pat_lcont = re.compile(r"^\s{5}[1-9](?ai)")
+
+        odd_lcont_ct = 0
+        pat_odd_lcont = re.compile(r"^\s{5}[^ 1-9](?ai)")
+
+        goto_ct = 0
+        pat_goto = re.compile(r"GO\s*TO(?ai)")
+
+        has_while = False
+        pat_while = re.compile(r"do\s+while(?ai)")
+
+        has_end_do = False
+        pat_end_do = re.compile(r"end\s*do(?ai)")
+
+        contents = open(fname, "U")
+        for line in contents:
+            # print('line is [{0:s}]'.format(line))
+            line_ct += 1
+
+            if pat_tab.search(line):
+                tab_ct += 1
+
+            if pat_lcont.search(line):
+                lcont_ct += 1
+            elif pat_odd_lcont.search(line):
+                odd_lcont_ct += 1
+
+            llen = len(line)
+            max_llen = max(llen, max_llen)
+            # uline = str(line).upper()
+
+            # print('uc(first char) is {0:s}'.format(uline[0]))
+
+            if pat_ccmt.search(line):
+                ccmt_ct += 1
+            else:
+                # print('not a comment [{0:s}]'.format(line))
+                if pat_excmt.search(line):
+                    excmt_ct += 1
+                else:
+                    if pat_goto.search(line):
+                        goto_ct += 1
+
+                    if pat_while.search(line):
+                        has_while = True
+
+                    if pat_end_do.search(line):
+                        has_end_do = True
+
+            if llen > 6:
+                try:
+                    if (int(line[0:4]) > 0) or (int(line[1:4]) > 0):
+                        label_ct += 1
+                except ValueError:
+                    pass
+
+        # line_endings = contents.newlines()
+        # print("{0} unique line endings".format(len(line_endings)))
+        print("{0} lines".format(line_ct))
+        print("{0} legacy comments".format(ccmt_ct))
+        if excmt_ct > 0:
+            print("{0} modern comments".format(excmt_ct))
+        print("{0} legacy labels".format(label_ct))
+        print("{0} GOTOs".format(goto_ct))
+        print("{0} valid legacy continuations".format(lcont_ct))
+        print("{0} non-standard legacy continuations".format(odd_lcont_ct))
+        if tab_ct > 0:
+            print("{0} tabs (\\t) found".format(tab_ct))
+        print("Max line length is {0}".format(max_llen))
+        if has_end_do:
+            print("Found END DO")
+        if has_while:
+            print("Found DO WHILE")
+
+        print()
+
+
 def main():
     """main entry point"""
     p = get_parser()
     args = p.parse_args()
     rabbit = Stopwatch()
     try:
-        if args.command == 'splice':
+        if args.command == 'assess':
+            cmd_assess(args)
+        elif args.command == 'splice':
             cmd_splice(args)
         elif args.command == 'lex':
             cmd_lex(args)
